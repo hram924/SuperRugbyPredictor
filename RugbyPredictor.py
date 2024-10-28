@@ -1,159 +1,130 @@
 import pandas as pd
 import numpy as np
 
-# Constants for initial ranking and adjustment factor
-INITIAL_RATING = 80  # Starting point for all teams
-K_FACTOR = 2         # Determines how much ranking points change after each game
-STANDARD_HOME_ADVANTAGE = 3  # Points advantage for home teams
-REDUCED_HOME_ADVANTAGE = 2   # Reduced advantage when teams from the same country play
+# Define the teams in Super Rugby
+teams = [
+    'Hurricanes', 'Blues', 'Brumbies', 'Chiefs', 'Reds',
+    'Highlanders', 'Drua', 'Rebels', 'Crusaders', 'Force',
+    'Moana Pasifika', 'Waratahs'
+]
 
-# Load data from CSV files
-def load_data(prev_seasons_path, current_season_path, fixtures_path):
-    # Load previous seasons' data, current season data, and future fixtures
-    prev_seasons = pd.read_csv(prev_seasons_path)
-    current_season = pd.read_csv(current_season_path)
-    fixtures = pd.read_csv(fixtures_path)
-    return prev_seasons, current_season, fixtures
+# Initialize a DataFrame to store previous results (example data)
+previous_results = pd.DataFrame({
+    'team_a': ['Hurricanes', 'Blues', 'Brumbies', 'Chiefs', 'Reds'],
+    'team_b': ['Blues', 'Hurricanes', 'Chiefs', 'Rebels', 'Highlanders'],
+    'score_a': [30, 25, 35, 40, 20],
+    'score_b': [20, 15, 30, 15, 30]
+})
 
-# Calculate points exchange based on the ranking system
-def calculate_points_exchange(team_a_rank, team_b_rank, result, home_team, same_country):
-    # Determine home advantage, reducing it if teams are from the same country
-    home_advantage = STANDARD_HOME_ADVANTAGE if not same_country else REDUCED_HOME_ADVANTAGE
-    team_a_advantage = home_advantage if home_team == "team_a" else -home_advantage
-    
-    # Calculate the rating difference between the two teams and add home advantage
-    rating_diff = team_a_rank - team_b_rank + team_a_advantage
-    
-    # Use a logistic function to determine win probability
-    win_prob = 1 / (1 + 10 ** (-rating_diff / 10))
-    
-    # Calculate points change based on the result of the match
-    if result == "team_a_win":
-        points_change = K_FACTOR * (1 - win_prob)  # Team A wins, gets more points
-    elif result == "team_b_win":
-        points_change = K_FACTOR * (-win_prob)     # Team B wins, Team A loses points
-    else:
-        points_change = 0  # No points change for a draw (can be expanded if needed)
-    
-    return points_change
+# Initialize user input for team skill adjustments (all set to 0)
+team_adjustments = {team: 0 for team in teams}
 
-# Update team rankings after a match
-def update_rankings(rankings, team_a, team_b, result, home_team, same_country):
-    # Get the current rankings of both teams
-    team_a_rank = rankings[team_a]
-    team_b_rank = rankings[team_b]
+# Function to calculate team ratings based on previous results
+def calculate_ratings(previous_results):
+    ratings = {team: 80 for team in teams}  # Default starting rating
     
-    # Calculate points exchange based on match result
-    points_change = calculate_points_exchange(team_a_rank, team_b_rank, result, home_team, same_country)
-    
-    # Update rankings: team A gains or loses points, and team B mirrors that change
-    rankings[team_a] += points_change
-    rankings[team_b] -= points_change
+    for index, row in previous_results.iterrows():
+        team_a = row['team_a']
+        team_b = row['team_b']
+        score_a = row['score_a']
+        score_b = row['score_b']
+        
+        point_difference = score_a - score_b
+        
+        if score_a > score_b:
+            ratings[team_a] += 5
+            ratings[team_b] -= 5
+            if point_difference > 15:
+                ratings[team_a] += 2
+            elif point_difference < -15:
+                ratings[team_b] += 2
+        elif score_a < score_b:
+            ratings[team_b] += 5
+            ratings[team_a] -= 5
+            if point_difference < -15:
+                ratings[team_b] += 2
+            elif point_difference > 15:
+                ratings[team_a] += 2
 
-# Predict match win probability based on rankings and home advantage
-def predict_match_win_prob(rankings, team_a, team_b, home_team, same_country):
-    # Adjust home advantage based on whether the teams are from the same country
-    home_advantage = STANDARD_HOME_ADVANTAGE if not same_country else REDUCED_HOME_ADVANTAGE
-    team_a_advantage = home_advantage if home_team == team_a else -home_advantage
-    
-    # Calculate the rating difference including the home advantage
-    rating_diff = rankings[team_a] - rankings[team_b] + team_a_advantage
-    
-    # Use the logistic function to calculate the probability of team A winning
-    win_prob = 1 / (1 + 10 ** (-rating_diff / 10))
-    return win_prob
+    return ratings
 
-# Simulate the remaining fixtures, updating team rankings as we go
-def simulate_remaining_fixtures(rankings, fixtures, same_country_teams):
-    # Loop through each match in the remaining fixtures
-    for idx, match in fixtures.iterrows():
-        team_a = match['team_a']
-        team_b = match['team_b']
-        home_team = match['home_team']
-        
-        # Check if the teams are from the same country (to adjust home advantage)
-        same_country = team_a in same_country_teams and team_b in same_country_teams
-        
-        # Predict the win probability based on current rankings
-        win_prob = predict_match_win_prob(rankings, team_a, team_b, home_team, same_country)
-        
-        # Simulate match result using the win probability (Team A vs Team B)
-        result = np.random.choice(["team_a_win", "team_b_win"], p=[win_prob, 1-win_prob])
-        
-        # Update the rankings based on the result of the simulated match
-        update_rankings(rankings, team_a, team_b, result, home_team, same_country)
+# Function to calculate win probability based on ratings
+def calculate_win_probability(team_a_rating, team_b_rating):
+    prob_a = 1 / (1 + 10 ** ((team_b_rating - team_a_rating) / 400))
+    prob_b = 1 - prob_a
+    return prob_a, prob_b
 
-# Run a Monte Carlo simulation to estimate each team's probability of winning the championship
-def championship_probabilities(rankings, fixtures, num_simulations, same_country_teams):
-    # Track the number of times each team wins the championship
-    championship_wins = {team: 0 for team in rankings.keys()}
+# Function to calculate draw and bonus point probabilities based on ratings difference
+def calculate_additional_probs(rating_diff):
+    # Draw probability higher if rating difference is low, decreasing as difference increases
+    draw_prob = max(0, 0.2 - (rating_diff / 50))
     
-    # Simulate the rest of the season multiple times
-    for _ in range(num_simulations):
-        # Create a copy of the rankings to simulate without affecting the original data
-        simulated_rankings = rankings.copy()
-        
-        # Simulate the remaining matches and update rankings
-        simulate_remaining_fixtures(simulated_rankings, fixtures, same_country_teams)
-        
-        # Determine the team with the highest ranking after the simulations (the "winner")
-        winner = max(simulated_rankings, key=simulated_rankings.get)
-        
-        # Increment the win count for the team that won the simulation
-        championship_wins[winner] += 1
+    # Winning bonus point probability higher for strong team if rating difference is high
+    bonus_prob_win = min(0.3, max(0.1, rating_diff / 200))
     
-    # Convert the championship win counts to probabilities (percentage chance of winning)
-    probabilities = {team: wins / num_simulations for team, wins in championship_wins.items()}
-    return probabilities
+    # Losing bonus point probability higher if ratings are close
+    bonus_prob_loss = max(0.3 - (rating_diff / 100), 0.1)
+    
+    return draw_prob, bonus_prob_win, bonus_prob_loss
 
-# Main program to run the entire simulation
-def main(prev_seasons_path, current_season_path, fixtures_path, num_simulations=10000):
-    # Load previous season, current season, and fixture data
-    prev_seasons, current_season, fixtures = load_data(prev_seasons_path, current_season_path, fixtures_path)
-    
-    # Initialize all teams with the same starting ranking
-    teams = set(prev_seasons['team_a']).union(set(prev_seasons['team_b']))
-    rankings = {team: INITIAL_RATING for team in teams}
-    
-    # Simulate past seasons to bring rankings up to the present
-    for idx, match in prev_seasons.iterrows():
-        team_a = match['team_a']
-        team_b = match['team_b']
-        result = "team_a_win" if match['score_a'] > match['score_b'] else "team_b_win"
-        home_team = match['home_team']
-        same_country = match['same_country']  # True if teams from same country
-        
-        # Update rankings based on past match results
-        update_rankings(rankings, team_a, team_b, result, home_team, same_country)
-    
-    # Apply current season matches to further update rankings
-    for idx, match in current_season.iterrows():
-        team_a = match['team_a']
-        team_b = match['team_b']
-        result = "team_a_win" if match['score_a'] > match['score_b'] else "team_b_win"
-        home_team = match['home_team']
-        same_country = match['same_country']
-        
-        # Update rankings based on current season results
-        update_rankings(rankings, team_a, team_b, result, home_team, same_country)
-    
-    # Define teams from the same country to apply the reduced home advantage
-    same_country_teams = {"NZL_team1", "NZL_team2", "AUS_team1", "AUS_team2", "RSA_team1", "RSA_team2"}
-    
-    # Run Monte Carlo simulations to estimate championship probabilities
-    probabilities = championship_probabilities(rankings, fixtures, num_simulations, same_country_teams)
-    
-    # Output the championship probabilities for each team
-    print("Championship Win Probabilities:")
-    for team, prob in probabilities.items():
-        print(f"{team}: {prob*100:.2f}%")
+# Function to estimate points scored at the end of the season
+def estimate_final_points(win_prob, bonus_prob_win, bonus_prob_loss, draw_prob):
+    return (win_prob * 4) + (bonus_prob_win * 1) + (bonus_prob_loss * 1) + (draw_prob * 2)
 
-# Example usage
-if __name__ == "__main__":
-    # Paths to the dataset files
-    prev_seasons_path = 'path_to_previous_seasons.csv'
-    current_season_path = 'path_to_current_season.csv'
-    fixtures_path = 'path_to_fixtures.csv'
+# Calculate initial ratings based on previous results
+ratings = calculate_ratings(previous_results)
+
+# Apply user adjustments (no effect as all set to 0)
+for team, adjustment in team_adjustments.items():
+    if team in ratings:
+        ratings[team] *= (1 + adjustment / 100)
+
+# Display the adjusted ratings
+print("Adjusted Team Ratings:")
+print(ratings)
+
+# Current fixtures for the rest of the season
+fixtures = [
+    ('Hurricanes', 'Crusaders'),
+    ('Blues', 'Highlanders'),
+    ('Brumbies', 'Drua'),
+    ('Chiefs', 'Reds'),
+    ('Rebels', 'Force'),
+    ('Moana Pasifika', 'Waratahs'),
+]
+
+# Initialize estimated points for each team
+estimated_points = {team: 0 for team in teams}
+
+# Calculate win probabilities and estimated points
+for fixture in fixtures:
+    team_a, team_b = fixture
+    rating_a = ratings[team_a]
+    rating_b = ratings[team_b]
+    rating_diff = abs(rating_a - rating_b)
+
+    prob_a, prob_b = calculate_win_probability(rating_a, rating_b)
     
-    # Run the main function with the data
-    main(prev_seasons_path, current_season_path, fixtures_path)
+    # Calculate draw and bonus probabilities based on rating difference
+    draw_prob, bonus_prob_win_a, bonus_prob_loss_a = calculate_additional_probs(rating_diff)
+    draw_prob_b, bonus_prob_win_b, bonus_prob_loss_b = calculate_additional_probs(rating_diff)
+    
+    # Estimate final points for Team A
+    final_points_a = estimate_final_points(prob_a, bonus_prob_win_a, bonus_prob_loss_a, draw_prob)
+    final_points_b = estimate_final_points(prob_b, bonus_prob_win_b, bonus_prob_loss_b, draw_prob)
+
+    # Update estimated points for each team
+    estimated_points[team_a] += final_points_a
+    estimated_points[team_b] += final_points_b
+
+    # Output results for the current fixture
+    print(f"{team_a} vs {team_b}:")
+    print(f"  Win Probability: {prob_a:.2%} for {team_a}, {prob_b:.2%} for {team_b}")
+    print(f"  Draw Probability: {draw_prob:.2%}")
+    print(f"  Estimated Points: {team_a} = {final_points_a:.2f}, {team_b} = {final_points_b:.2f}")
+
+# Display the final estimated points table at the end of fixtures
+print("\nEstimated Points Table:")
+for team, points in estimated_points.items():
+    win_percentage = (points / len(fixtures)) * 100  # Calculate win percentage based on estimated points
+    print(f"{team}: Estimated Points = {points:.2f}, Win Percentage = {win_percentage:.2f}%")
