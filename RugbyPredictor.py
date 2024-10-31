@@ -16,6 +16,10 @@ teams = [
 initial_ranking = 80  # example starting rating
 team_ratings = {team: initial_ranking for team in teams}
 
+# Load initial points for each team from points.xlsx
+initial_points = pd.read_excel('points.xlsx', index_col='Team')
+points_table = initial_points['Points'].to_dict()
+
 # Define home advantage
 HOME_ADVANTAGE = 3
 
@@ -29,10 +33,15 @@ def calculate_win_probability(home_rating, away_rating):
 def apply_ranking_adjustment(home_team, away_team, home_score, away_score):
     pre_match_home = team_ratings[home_team] + HOME_ADVANTAGE
     pre_match_away = team_ratings[away_team]
-    
+      
     # Calculate the score difference and "Modified pre-match Ranking Scores" difference D
     score_diff = home_score - away_score
     D = pre_match_home - pre_match_away
+    
+       # Check if the higher-rated team won and has at least a 10-point higher ranking
+    if (home_score > away_score and pre_match_home >= pre_match_away + 10) or \
+       (away_score > home_score and pre_match_away >= pre_match_home + 10):
+        return  # Exit function with no adjustment
     
     # Determine adjustment based on the game outcome and score difference
     if home_score > away_score:  # Home team wins
@@ -76,9 +85,7 @@ for _, row in fixtures.iterrows():
         "Away Team": away_team,
         "% Home Win": round(home_prob * 100, 2)
     })
-
 # Estimate end-of-season points table
-points_table = {team: 0 for team in teams}
 for fixture in fixture_predictions:
     home_team = fixture["Home Team"]
     away_team = fixture["Away Team"]
