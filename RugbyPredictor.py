@@ -8,11 +8,9 @@ historical_results = pd.read_excel('Results.xlsx')
 fixtures = pd.read_excel('Fixtures.xlsx')
 
 # Initialize team rankings based on last available data, with 0 adjustments
-teams = [
-    "Hurricanes", "Blues", "Brumbies", "Chiefs", "Reds", 
+teams = ["Hurricanes", "Blues", "Brumbies", "Chiefs", "Reds", 
     "Highlanders", "Fijian Drua", "Rebels", "Crusaders", "Force", 
-    "Moana Pasifika", "Waratahs"
-]
+    "Moana Pasifika", "Waratahs"]
 initial_ranking = 80  # example starting rating
 team_ratings = {team: initial_ranking for team in teams}
 
@@ -85,19 +83,36 @@ for _, row in fixtures.iterrows():
         "Away Team": away_team,
         "% Home Win": round(home_prob * 100, 2)
     })
-# Estimate end-of-season points table
+# Generate fixture predictions and calculate bonus points
 for fixture in fixture_predictions:
     home_team = fixture["Home Team"]
     away_team = fixture["Away Team"]
     prob_home_win = fixture["% Home Win"] / 100
     prob_draw = 0.05  # example draw probability
 
-    # Estimate bonus point probabilities
-    prob_bonus_home = prob_home_win * 0.2  # arbitrary scaling for bonus points
-    prob_bonus_away = (1 - prob_home_win - prob_draw) * 0.2  # example logic
+    # Adjusted ranking difference (includes home advantage)
+    ranking_diff = (team_ratings[home_team] + HOME_ADVANTAGE) - team_ratings[away_team]
+    abs_diff = abs(ranking_diff)  # Absolute ranking difference
 
-    points_table[home_team] += calculate_expected_points(prob_home_win, prob_draw, prob_bonus_home, 0)
-    points_table[away_team] += calculate_expected_points(1 - prob_home_win, prob_draw, 0, prob_bonus_away)
+    # Winning Bonus Point Probability (3+ tries margin)
+    if ranking_diff > 0:  # Home team is stronger
+        prob_bonus_home_win = max(0.1, min(0.5, 0.2 + (abs_diff / 40)))  # Adjusted for wider gap
+        prob_bonus_away_win = max(0.05, min(0.2, 0.15 - (abs_diff / 80)))  # Decrease more with widening gap
+    else:  # Away team is stronger
+        prob_bonus_home_win = max(0.05, min(0.2, 0.15 - (abs_diff / 80)))  # Decrease more with widening gap
+        prob_bonus_away_win = max(0.1, min(0.5, 0.2 + (abs_diff / 40)))  # Adjusted for wider gap
+
+    # Losing Bonus Point Probability (losing by ≤7 points)
+    if ranking_diff > 0:  # Home team is stronger
+        prob_bonus_home_lose = max(0.1, min(0.5, 0.4 - (abs_diff / 40)))  # Adjusted for wider gap
+        prob_bonus_away_lose = max(0.2, min(0.6, 0.3 + (abs_diff / 30)))  # Increase with gap
+    else:  # Away team is stronger
+        prob_bonus_home_lose = max(0.2, min(0.6, 0.3 + (abs_diff / 30)))  # Increase with gap
+        prob_bonus_away_lose = max(0.1, min(0.5, 0.4 - (abs_diff / 40)))  # Adjusted for wider gap
+
+    # Update points table with adjusted expected points
+    points_table[home_team] += calculate_expected_points(prob_home_win, prob_draw, prob_bonus_home_win, prob_bonus_home_lose)
+    points_table[away_team] += calculate_expected_points(1 - prob_home_win, prob_draw, prob_bonus_away_win, prob_bonus_away_lose)
 
 # Display output
 print("Team Rankings:")
