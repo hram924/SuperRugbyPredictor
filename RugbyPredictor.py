@@ -115,14 +115,21 @@ for fixture in fixture_predictions:
     points_table[away_team] += calculate_expected_points(1 - prob_home_win, prob_draw, prob_bonus_away_win, prob_bonus_away_lose)
 
 # Display output
-print("Team Rankings:")
-for team, rating in team_ratings.items():
-    print(f"{team}: {rating:.2f}")
+print("Team Rankings")
+sorted_rankings = sorted(
+    [(team, rating) for team, rating in team_ratings.items() if team != "Rebels"],
+    key=lambda x: x[1],
+    reverse=True
+)
+
+for rank, (team, rating) in enumerate(sorted_rankings, start=1):
+    print(f"{rank}. {team}: {rating:.2f}")
 
 print("\nFixture Predictions:")
 for fixture in fixture_predictions:
     print(f"{fixture['Home Team']} vs {fixture['Away Team']}: {fixture['% Home Win']}% chance for Home Team win")
 
 print("\nEstimated Points Table at End of Season:")
-for team, points in sorted(points_table.items(), key=lambda x: x[1], reverse=True):
-    print(f"{team}: {points:.2f} points")
+sorted_points = sorted(points_table.items(), key=lambda x: x[1], reverse=True)
+for rank, (team, points) in enumerate(sorted_points, start=1):
+    print(f"{rank}. {team}: {points:.2f} points")
